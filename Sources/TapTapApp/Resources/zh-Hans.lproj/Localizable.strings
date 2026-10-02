@@ -129,3 +129,5 @@
 "Either Side Triggers One-Sided Gestures" = "只设定一侧时，左右都能触发";
 "Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it." = "判断左右比判断有没有敲击更容易出错。如果某个双击或三击只有一侧设定了动作，敲左边或右边都会执行它。";
 "Couldn't tell left from right. Try again." = "无法判断是左边还是右边，请再试一次。";
+"Low Power Mode" = "低功耗模式";
+"Listens at a low sample rate until the first tap, then switches to full rate for the rest of the gesture. Uses under 1% CPU while idle; turn it off if double taps are often missed." = "平时以低采样率待命，检测到第一下敲击后才切换到全速识别后续敲击。闲置时 CPU 占用低于 1%；如果双击常被漏掉，可以关闭。";

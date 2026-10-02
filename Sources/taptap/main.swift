@@ -3,10 +3,10 @@ import TapCore
 
 let usage = """
 usage:
-  taptap live    [--model model/tapmodel.json] [--min-peak 8] [--verbose]
+  taptap live    [--model model/tapmodel.json] [--min-peak 8] [--full-rate] [--verbose]
   taptap collect [--protocol taps|gestures] [--surface NAME] [--note TEXT] [--only a,b]
   taptap extract <session-dir>                 write per-tap features to <session-dir>/events_swift.csv
-  taptap eval    <session-dir> [--model PATH] [--min-peak 8] [--verbose]   run the full pipeline on every recording
+  taptap eval    <session-dir> [--model PATH] [--min-peak 8] [--low-power] [--verbose]   run the full pipeline on every recording
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -21,11 +21,12 @@ let verbose = args.contains("--verbose")
 let modelPath = option("--model") ?? "model/tapmodel.json"
 let minPeak = option("--min-peak").flatMap(Double.init) ?? 8
 let minMac = option("--min-mac").flatMap(Double.init)
+let lowPower = args.contains("--low-power")
 var positional: [String] {
     var out: [String] = [], skip = false
     for a in args {
         if skip { skip = false; continue }
-        if a == "--verbose" || a == "--trace" || a == "--no-trim" { continue }
+        if ["--verbose", "--trace", "--no-trim", "--low-power", "--full-rate"].contains(a) { continue }
         if a.hasPrefix("--") { skip = true; continue }
         out.append(a)
     }
@@ -53,6 +54,7 @@ case "live":
     let model = loadModel()
     let engine = TapEngine(classifier: model)
     engine.minPeak = minPeak
+    engine.lowPower = !args.contains("--full-rate")
     let clock = DateFormatter(); clock.dateFormat = "HH:mm:ss.SSS"
     engine.onGesture = { g in print("\(clock.string(from: Date()))  ▶ \(describe(g))"); fflush(stdout) }
     if verbose {
@@ -103,13 +105,15 @@ case "eval":
     print("file              expected      " + locs.flatMap { l in [2, 3].map { "\(l.rawValue)×\($0)" } }.map { $0.padding(toLength: 12, withPad: " ", startingAt: 0) }.joined())
     for file in recordings(in: dir) {
         let label = String(file.dropLast(4))
-        let detector = TapDetector()
         let recognizer = GestureRecognizer(classifier: model)
         recognizer.minPeak = minPeak
         if let minMac { recognizer.minMacConfidence = minMac }
         if args.contains("--no-trim") { recognizer.trimTriples = false }
         var counts = [String: Int]()
-        detector.onTap = { recognizer.handle($0) }
+        // --low-power replays idle stretches at 100 Hz (every 8th sample) until a wake.
+        var idle = lowPower, wakes = 0
+        let pipeline = TapPipeline(recognizer: recognizer, lowPower: lowPower,
+                                   setRate: { idle = $0 == .idle; if $0 == .full { wakes += 1 } })
         if args.contains("--trace") {
             recognizer.onTrace = { t, p, verdict in
                 if verdict.hasPrefix("tap #") { return }
@@ -121,18 +125,22 @@ case "eval":
             counts["\(g.location.rawValue)×\(g.count)", default: 0] += 1
             if verbose { print(String(format: "    %@ %7.2fs  %@", label as NSString, g.t, describe(g))) }
         }
-        for s in try Recording.load("\(dir)/\(file)") {
-            detector.feed(s)
-            recognizer.tick(now: detector.now, moving: detector.isMoving)
+        let samples = try Recording.load("\(dir)/\(file)")
+        var fullRate = 0
+        for (i, s) in samples.enumerated() {
+            if idle && i % 8 != 0 { continue }
+            if !idle { fullRate += 1 }
+            pipeline.feed(s)
         }
         recognizer.tick(now: .infinity, moving: false)
+        let duty = lowPower ? String(format: "  full-rate %3.0f%%, %d wakes", 100 * Double(fullRate) / Double(max(samples.count, 1)), wakes) : ""
         var expected = "-"
         if let r = label.range(of: #"_x[23]$"#, options: .regularExpression) {
             expected = "\(label[..<r.lowerBound])×\(label.last!)"
         }
         let row = locs.flatMap { l in [2, 3].map { counts["\(l.rawValue)×\($0)"] ?? 0 } }
         print(label.padding(toLength: 18, withPad: " ", startingAt: 0) + expected.padding(toLength: 14, withPad: " ", startingAt: 0)
-              + row.map { String($0).padding(toLength: 12, withPad: " ", startingAt: 0) }.joined())
+              + row.map { String($0).padding(toLength: 12, withPad: " ", startingAt: 0) }.joined() + duty)
     }
 
 case "collect":

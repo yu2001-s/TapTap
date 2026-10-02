@@ -56,12 +56,34 @@ public final class GestureRecognizer {
     public var onTrace: ((Double, [Double]?, String) -> Void)?
 
     private let classifier: TapClassifier
-    private var group: [(t: Double, p: [Double], peak: Double)] = []
+    /// `p` and `peak` are nil for a pre-tap: a tap only seen at the low idle rate.
+    private var group: [(t: Double, p: [Double]?, peak: Double?)] = []
     private var impulses: [Double] = []
     private var lockedUntil = -Double.infinity
 
     public init(classifier: TapClassifier) {
         self.classifier = classifier
+    }
+
+    /// True while taps are being collected into a gesture.
+    public var hasPendingGroup: Bool { !group.isEmpty }
+
+    /// A tap noticed at the low idle sample rate, which is too coarse to classify. It counts
+    /// toward the gesture's tap count; the location comes from the full-rate taps after it.
+    public func handlePreTap(at t: Double, keyAge: Double, clickAge: Double) {
+        impulses.append(t)
+        impulses.removeAll { t - $0 > burstWindow }
+        if t < lockedUntil {
+            cancel(at: t, reason: "burst")
+            return
+        }
+        if keyAge < keyQuiet || clickAge < clickQuiet {
+            cancel(at: t, reason: keyAge < keyQuiet ? "typing" : "click")
+            return
+        }
+        if let last = group.last, t - last.t > maxGap { flush() }
+        group.append((t, nil, nil))
+        onTrace?(t, nil, "tap #\(group.count) (idle-rate wake)")
     }
 
     public func handle(_ tap: TapEvent) {
@@ -92,7 +114,7 @@ public final class GestureRecognizer {
             return
         }
         if let last = group.last, tap.t - last.t > maxGap { flush() }
-        if let strongest = group.map(\.peak).max(), peak < minRelativePeak * strongest {
+        if let strongest = group.compactMap(\.peak).max(), peak < minRelativePeak * strongest {
             onTrace?(tap.t, nil, String(format: "rebound (%.0f mg vs %.0f mg)", peak, strongest))
             return
         }
@@ -121,8 +143,8 @@ public final class GestureRecognizer {
     private func flush() {
         defer { group.removeAll() }
         guard group.count >= 2 else { return }
-        let peaks = group.map(\.peak)
-        if peaks.max()! / max(peaks.min()!, 1e-6) > maxPeakRatio {
+        let peaks = group.compactMap(\.peak)
+        if peaks.count >= 2, peaks.max()! / max(peaks.min()!, 1e-6) > maxPeakRatio {
             onTrace?(group.last!.t, nil, "group of \(group.count) rejected (uneven strength)")
             return
         }
@@ -132,7 +154,11 @@ public final class GestureRecognizer {
         // The first tap of a triple lands on a still chassis, the others in the previous tap's
         // ringing, and it is often the odd one out (looks like a desk knock). Score a triple
         // by its two most Mac-like taps; doubles have no tap to spare.
-        var voters = group.map(\.p)
+        var voters = group.compactMap(\.p)
+        guard !voters.isEmpty else {
+            onTrace?(group.last!.t, nil, "group of \(group.count) rejected (no full-rate taps)")
+            return
+        }
         if trimTriples, voters.count == 3, let worst = voters.indices.min(by: { macProb(voters[$0]) < macProb(voters[$1]) }) {
             voters.remove(at: worst)
         }

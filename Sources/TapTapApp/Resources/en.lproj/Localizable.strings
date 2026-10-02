@@ -129,3 +129,5 @@
 "Either Side Triggers One-Sided Gestures" = "Either Side Triggers One-Sided Gestures";
 "Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it." = "Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it.";
 "Couldn't tell left from right. Try again." = "Couldn't tell left from right. Try again.";
+"Low Power Mode" = "Low Power Mode";
+"Listens at a low sample rate until the first tap, then switches to full rate for the rest of the gesture. Uses under 1% CPU while idle; turn it off if double taps are often missed." = "Listens at a low sample rate until the first tap, then switches to full rate for the rest of the gesture. Uses under 1% CPU while idle; turn it off if double taps are often missed.";

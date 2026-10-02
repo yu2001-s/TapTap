@@ -41,6 +41,9 @@ struct SettingsView: View {
                     Text(L10n.format("%d mg. Lower the threshold if light taps are missed; raise it if resting your hands causes accidental triggers.", Int(model.config.minPeak)))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Toggle(L10n.text("Low Power Mode"), isOn: $model.config.lowPower)
+                Text(L10n.text("Listens at a low sample rate until the first tap, then switches to full rate for the rest of the gesture. Uses under 1% CPU while idle; turn it off if double taps are often missed."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section(L10n.text("General")) {

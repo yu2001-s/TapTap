@@ -24,30 +24,50 @@ public enum SensorError: Error, CustomStringConvertible {
 /// Undocumented Bosch IMU behind AppleSPUHIDDevice (vendor page 0xFF00; usage 3 = accel, 9 = gyro).
 /// Reports are 22 bytes; x/y/z are little-endian Int32 at offsets 6/10/14, scaled by 1/65536.
 public final class SPUSensor {
-    /// Called on the sensor's HID thread for every accelerometer report (~800 Hz); keep it cheap.
+    public enum Rate: Equatable {
+        /// Accelerometer + gyroscope at ~800 Hz: needed to classify a tap.
+        case full
+        /// Accelerometer only at ~100 Hz: enough to notice that something hit the chassis,
+        /// at about a sixth of the CPU cost (receiving each report is the dominant cost).
+        case idle
+    }
+
+    /// Called on the sensor's HID thread for every accelerometer report; keep it cheap.
     public var onSample: ((IMUSample) -> Void)?
     public private(set) var hasGyro = false
+    /// Current rate. Change it with `setRate(_:)` from `onSample` (the sensor thread).
+    public private(set) var rate: Rate
 
     private var accel: IOHIDDevice?
     private var gyro: IOHIDDevice?
+    private var gyroOpen = false
     private let lock = NSLock()
     private var latestGyro = SIMD3<Double>(repeating: 0)
     private var keyAge = 99.0
     private var clickAge = 99.0
     private let t0 = CFAbsoluteTimeGetCurrent()
     private var timers: [DispatchSourceTimer] = []
+    private var inputTimer: DispatchSourceTimer?
+    private var inputPolling = false
     private var runLoop: CFRunLoop?
     private var samplesSinceCheck = 0
+    private var lockedRate: Rate
     private let accelBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
     private let gyroBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 4096)
 
-    public init() {}
+    public init(rate: Rate = .full) {
+        self.rate = rate
+        lockedRate = rate
+    }
 
     public func start() throws {
-        Self.wake()
+        Self.configureDrivers(for: rate)
         guard let a = Self.open(usage: 3) else { throw SensorError.unavailable }
         accel = a
-        gyro = Self.open(usage: 9)
+        if let s = Self.findService(usage: 9) {
+            gyro = IOHIDDeviceCreate(nil, s)
+            IOObjectRelease(s)
+        }
         hasGyro = gyro != nil
 
         let ctx = Unmanaged.passUnretained(self).toOpaque()
@@ -55,61 +75,108 @@ public final class SPUSensor {
             guard let ctx, len == 22 else { return }
             Unmanaged<SPUSensor>.fromOpaque(ctx).takeUnretainedValue().handleAccel(spuReadXYZ(rep))
         }, ctx)
-        if let g = gyro {
-            IOHIDDeviceRegisterInputReportCallback(g, gyroBuf, 4096, { ctx, _, _, _, _, rep, len in
-                guard let ctx, len == 22 else { return }
-                Unmanaged<SPUSensor>.fromOpaque(ctx).takeUnretainedValue().handleGyro(spuReadXYZ(rep))
-            }, ctx)
-        }
 
-        let devices = [a] + (gyro.map { [$0] } ?? [])
         let thread = Thread { [weak self] in
-            self?.runLoop = CFRunLoopGetCurrent()
-            for d in devices {
-                IOHIDDeviceScheduleWithRunLoop(d, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
-            }
+            guard let self else { return }
+            self.runLoop = CFRunLoopGetCurrent()
+            IOHIDDeviceScheduleWithRunLoop(a, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+            if self.rate == .full { self.openGyro() }
             CFRunLoopRun()
         }
         thread.name = "TapTap.SPU"
         thread.qualityOfService = .userInteractive
         thread.start()
 
-        // macOS parks the IMU (or drops it to ~100 Hz) when the chassis is still. Re-arm only
-        // when the rate sags: poking every driver unconditionally costs several % CPU.
+        // macOS parks the IMU (or drops its rate) when the chassis is still. Re-arm only when
+        // the rate sags below about half the target: poking the drivers unconditionally is costly.
         let wake = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
         wake.schedule(deadline: .now() + 0.5, repeating: 0.5)
         wake.setEventHandler { [weak self] in
             guard let self else { return }
             self.lock.lock()
             let n = self.samplesSinceCheck
+            let rate = self.lockedRate
             self.samplesSinceCheck = 0
             self.lock.unlock()
-            if n < 225 { Self.wake() }          // < 450 Hz over the last 0.5 s
+            if n < (rate == .full ? 225 : 25) { Self.configureDrivers(for: rate) }
         }
         wake.resume()
 
-        // Seconds since last key/click; needs no Input Monitoring permission.
+        // Seconds since last key/click, polled only at full rate: each poll is three IPCs to
+        // the window server, which at idle would cost more than the sensor itself. At idle
+        // the pipeline asks `inputAges()` once, when a jolt might start a gesture.
         let input = DispatchSource.makeTimerSource(queue: .global(qos: .userInteractive))
         input.schedule(deadline: .now(), repeating: 0.02, leeway: .milliseconds(5))
-        input.setEventHandler { [weak self] in
-            let k = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)
-            let c = min(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .leftMouseDown),
-                        CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .rightMouseDown))
-            guard let self else { return }
-            self.lock.lock(); self.keyAge = k; self.clickAge = c; self.lock.unlock()
-        }
-        input.resume()
-        timers = [wake, input]
+        input.setEventHandler { [weak self] in self?.refreshInputAges() }
+        inputTimer = input
+        timers = [wake]
+        setInputPolling(rate == .full)
+    }
+
+    /// Seconds since the last key press and mouse/trackpad click, queried now.
+    @discardableResult
+    public func inputAges() -> (key: Double, click: Double) {
+        refreshInputAges()
+        lock.lock(); defer { lock.unlock() }
+        return (keyAge, clickAge)
+    }
+
+    private func refreshInputAges() {
+        let k = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)
+        let c = min(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .leftMouseDown),
+                    CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .rightMouseDown))
+        lock.lock(); keyAge = k; clickAge = c; lock.unlock()
+    }
+
+    private func setInputPolling(_ on: Bool) {
+        guard let t = inputTimer, on != inputPolling else { return }
+        inputPolling = on
+        if on { refreshInputAges(); t.resume() } else { t.suspend() }
+    }
+
+    /// Switches between full and idle rate. Call on the sensor thread (from `onSample`).
+    /// Going to full rate takes ~10 ms for the accelerometer and gyroscope to reach 800 Hz.
+    public func setRate(_ new: Rate) {
+        guard new != rate else { return }
+        rate = new
+        lock.lock(); lockedRate = new; samplesSinceCheck = 0; lock.unlock()
+        Self.configureDrivers(for: new)
+        if new == .full { openGyro() } else { closeGyro() }
+        setInputPolling(new == .full)
     }
 
     public func stop() {
         timers.forEach { $0.cancel() }
         timers = []
+        setInputPolling(true)          // a suspended dispatch source must be resumed before cancel
+        inputTimer?.cancel()
+        inputTimer = nil
         if let rl = runLoop { CFRunLoopStop(rl) }
         runLoop = nil
-        for d in [accel, gyro].compactMap({ $0 }) { IOHIDDeviceClose(d, 0) }
+        if let a = accel { IOHIDDeviceClose(a, 0) }
+        if gyroOpen, let g = gyro { IOHIDDeviceClose(g, 0) }
+        gyroOpen = false
         accel = nil
         gyro = nil
+    }
+
+    // The gyroscope is only opened at full rate: a closed device delivers no reports.
+    private func openGyro() {
+        guard let g = gyro, !gyroOpen, IOHIDDeviceOpen(g, 0) == kIOReturnSuccess else { return }
+        let ctx = Unmanaged.passUnretained(self).toOpaque()
+        IOHIDDeviceRegisterInputReportCallback(g, gyroBuf, 4096, { ctx, _, _, _, _, rep, len in
+            guard let ctx, len == 22 else { return }
+            Unmanaged<SPUSensor>.fromOpaque(ctx).takeUnretainedValue().handleGyro(spuReadXYZ(rep))
+        }, ctx)
+        IOHIDDeviceScheduleWithRunLoop(g, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        gyroOpen = true
+    }
+
+    private func closeGyro() {
+        guard let g = gyro, gyroOpen else { return }
+        IOHIDDeviceUnscheduleFromRunLoop(g, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceClose(g, 0)
+        gyroOpen = false
     }
 
     private func handleGyro(_ g: SIMD3<Double>) {
@@ -132,16 +199,24 @@ public final class SPUSensor {
         return true
     }
 
-    static func wake() {
+    /// Sets the accelerometer (and at full rate, gyroscope) drivers' reporting rate. Only
+    /// these two drivers are touched; the SPU also hosts ambient light, lid angle and others.
+    static func configureDrivers(for rate: Rate) {
         var it: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSPUHIDDriver"), &it) == KERN_SUCCESS else { return }
         defer { IOObjectRelease(it) }
         while case let s = IOIteratorNext(it), s != 0 {
+            defer { IOObjectRelease(s) }
+            let product = IORegistryEntryCreateCFProperty(s, "Product" as CFString, nil, 0)?.takeRetainedValue() as? String
+            guard product == "accel" || (product == "gyro" && rate == .full) else { continue }
             setProp(s, "SensorPropertyReportingState", 1)
             setProp(s, "SensorPropertyPowerState", 1)
-            setProp(s, "ReportInterval", 8000)
-            setProp(s, "ReportInterval", 1250)     // ~800 Hz
-            IOObjectRelease(s)
+            if rate == .full {
+                setProp(s, "ReportInterval", 8000)     // wakes a parked sensor
+                setProp(s, "ReportInterval", 1250)     // ~800 Hz
+            } else {
+                setProp(s, "ReportInterval", 10000)    // ~100 Hz
+            }
         }
     }
 

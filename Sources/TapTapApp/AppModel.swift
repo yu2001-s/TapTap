@@ -11,6 +11,8 @@ struct AppConfig: Codable, Equatable {
     /// When only one side of a double/triple tap has an action, run it no matter which
     /// side the tap was classified as. Left/right is the least reliable part of detection.
     var eitherSideWhenOneSided = true
+    /// Sample at ~100 Hz between gestures (well under 1% CPU) instead of 800 Hz all the time.
+    var lowPower = true
     var actions: [GestureSlot: GestureAction] = [
         .leftDouble: GestureAction(kind: .media, media: .playPause),
         .rightDouble: GestureAction(kind: .media, media: .next),
@@ -19,7 +21,7 @@ struct AppConfig: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case enabled, showHUD, showMenuBarIcon, minPeak, eitherSideWhenOneSided, actions
+        case enabled, showHUD, showMenuBarIcon, minPeak, eitherSideWhenOneSided, lowPower, actions
     }
 
     // Older settings have no icon preference. Preserve their actions and other
@@ -31,6 +33,7 @@ struct AppConfig: Codable, Equatable {
         showMenuBarIcon = try values.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? showMenuBarIcon
         minPeak = try values.decodeIfPresent(Double.self, forKey: .minPeak) ?? minPeak
         eitherSideWhenOneSided = try values.decodeIfPresent(Bool.self, forKey: .eitherSideWhenOneSided) ?? eitherSideWhenOneSided
+        lowPower = try values.decodeIfPresent(Bool.self, forKey: .lowPower) ?? lowPower
         actions = try values.decodeIfPresent([GestureSlot: GestureAction].self, forKey: .actions) ?? actions
     }
 
@@ -149,6 +152,7 @@ final class AppModel: ObservableObject {
         do {
             let e = TapEngine(classifier: try TapClassifier.load(path))
             e.minPeak = config.minPeak
+            e.lowPower = config.lowPower
             e.onGesture = { [weak self] g in self?.handle(g) }
             // Per-tap verdicts for diagnosing missed gestures:
             //   log stream --level info --predicate 'subsystem == "app.taptap.TapTap"'
@@ -180,6 +184,10 @@ final class AppModel: ObservableObject {
 
     private func apply(_ old: AppConfig) {
         if config.minPeak != old.minPeak { engine?.minPeak = config.minPeak }
+        if config.lowPower != old.lowPower, let engine {
+            engine.lowPower = config.lowPower
+            if engine.isRunning { engine.stop(); start() }
+        }
         if config.enabled != old.enabled { config.enabled ? start() : stop() }
     }
 

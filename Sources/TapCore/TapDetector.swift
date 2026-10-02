@@ -58,12 +58,17 @@ public final class TapDetector {
     private var gdev = [Double](repeating: 0, count: size)
     private var n = 0
 
-    private var gyroBias = SIMD3<Double>(repeating: 0)
+    /// Running estimate of the gyroscope's zero-rate offset; carry it into a new detector
+    /// so motion detection works from the first samples.
+    public private(set) var gyroBias = SIMD3<Double>(repeating: 0)
+    private var hasBias = false
     private var gdevSum = 0.0
     private var candPeak = -1, candStart = 0, lastPeak = -10_000
     private var pending: [Int] = []
 
-    public init() {}
+    public init(gyroBias: SIMD3<Double>? = nil) {
+        if let gyroBias { self.gyroBias = gyroBias; hasBias = true }
+    }
 
     @inline(__always) private func r(_ k: Int) -> Int { k & (Self.size - 1) }
 
@@ -98,7 +103,7 @@ public final class TapDetector {
 
     private func updateMotion(_ s: IMUSample) {
         let i = r(n)
-        if n == 0 { gyroBias = s.g }
+        if n == 0 && !hasBias { gyroBias = s.g }
         let d = length(s.g - gyroBias)
         if d < 2.0 { gyroBias += 0.002 * (s.g - gyroBias) }
         gdev[i] = d
@@ -116,7 +121,9 @@ public final class TapDetector {
                 finalize(peak: candPeak)
                 candPeak = -1
             }
-        } else if n >= preFrom + 40, env[i] > envFloor, score[i] > scoreThreshold, n - lastPeak >= minPeakGap {
+        // Ready once the 100 ms baseline window is filled: in low-power mode the detector
+        // starts right after the first tap and must be live before the second (~150 ms later).
+        } else if n >= preFrom + 8, env[i] > envFloor, score[i] > scoreThreshold, n - lastPeak >= minPeakGap {
             candPeak = n
             candStart = n
         }
