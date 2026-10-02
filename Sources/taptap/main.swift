@@ -20,11 +20,12 @@ func option(_ name: String) -> String? {
 let verbose = args.contains("--verbose")
 let modelPath = option("--model") ?? "model/tapmodel.json"
 let minPeak = option("--min-peak").flatMap(Double.init) ?? 8
+let minMac = option("--min-mac").flatMap(Double.init)
 var positional: [String] {
     var out: [String] = [], skip = false
     for a in args {
         if skip { skip = false; continue }
-        if a == "--verbose" || a == "--trace" { continue }
+        if a == "--verbose" || a == "--trace" || a == "--no-trim" { continue }
         if a.hasPrefix("--") { skip = true; continue }
         out.append(a)
     }
@@ -105,6 +106,8 @@ case "eval":
         let detector = TapDetector()
         let recognizer = GestureRecognizer(classifier: model)
         recognizer.minPeak = minPeak
+        if let minMac { recognizer.minMacConfidence = minMac }
+        if args.contains("--no-trim") { recognizer.trimTriples = false }
         var counts = [String: Int]()
         detector.onTap = { recognizer.handle($0) }
         if args.contains("--trace") {

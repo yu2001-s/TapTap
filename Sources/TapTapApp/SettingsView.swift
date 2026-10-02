@@ -24,6 +24,9 @@ struct SettingsView: View {
                 }
                 Text(L10n.text("Double- or triple-tap the left or right palm rest. Single taps, desk taps, typing, and movement are filtered out."))
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle(L10n.text("Either Side Triggers One-Sided Gestures"), isOn: $model.config.eitherSideWhenOneSided)
+                Text(L10n.text("Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section(L10n.text("Sensitivity")) {

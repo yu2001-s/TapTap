@@ -126,3 +126,6 @@
 "Could not control Discord's microphone. Try again." = "Could not control Discord's microphone. Try again.";
 "Discord did not confirm a mute change. Check its microphone button." = "Discord did not confirm a mute change. Check its microphone button.";
 "Toggles Discord's microphone without changing focus. Requires Accessibility access." = "Toggles Discord's microphone without changing focus. Requires Accessibility access.";
+"Either Side Triggers One-Sided Gestures" = "Either Side Triggers One-Sided Gestures";
+"Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it." = "Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it.";
+"Couldn't tell left from right. Try again." = "Couldn't tell left from right. Try again.";

@@ -126,3 +126,6 @@
 "Could not control Discord's microphone. Try again." = "无法控制 Discord 麦克风，请重试。";
 "Discord did not confirm a mute change. Check its microphone button." = "Discord 未确认静音状态变化，请检查麦克风按钮。";
 "Toggles Discord's microphone without changing focus. Requires Accessibility access." = "不切换当前 App，直接切换 Discord 麦克风静音。需要辅助功能权限。";
+"Either Side Triggers One-Sided Gestures" = "只设定一侧时，左右都能触发";
+"Telling left from right is less reliable than detecting the tap itself. If a double or triple tap has an action on only one side, tapping either side runs it." = "判断左右比判断有没有敲击更容易出错。如果某个双击或三击只有一侧设定了动作，敲左边或右边都会执行它。";
+"Couldn't tell left from right. Try again." = "无法判断是左边还是右边，请再试一次。";

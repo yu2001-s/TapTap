@@ -1,4 +1,5 @@
 import AppKit
+import os
 import ServiceManagement
 import TapCore
 
@@ -7,6 +8,9 @@ struct AppConfig: Codable, Equatable {
     var showHUD = true
     var showMenuBarIcon = true
     var minPeak = 8.0
+    /// When only one side of a double/triple tap has an action, run it no matter which
+    /// side the tap was classified as. Left/right is the least reliable part of detection.
+    var eitherSideWhenOneSided = true
     var actions: [GestureSlot: GestureAction] = [
         .leftDouble: GestureAction(kind: .media, media: .playPause),
         .rightDouble: GestureAction(kind: .media, media: .next),
@@ -15,7 +19,7 @@ struct AppConfig: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case enabled, showHUD, showMenuBarIcon, minPeak, actions
+        case enabled, showHUD, showMenuBarIcon, minPeak, eitherSideWhenOneSided, actions
     }
 
     // Older settings have no icon preference. Preserve their actions and other
@@ -26,10 +30,48 @@ struct AppConfig: Codable, Equatable {
         showHUD = try values.decodeIfPresent(Bool.self, forKey: .showHUD) ?? showHUD
         showMenuBarIcon = try values.decodeIfPresent(Bool.self, forKey: .showMenuBarIcon) ?? showMenuBarIcon
         minPeak = try values.decodeIfPresent(Double.self, forKey: .minPeak) ?? minPeak
+        eitherSideWhenOneSided = try values.decodeIfPresent(Bool.self, forKey: .eitherSideWhenOneSided) ?? eitherSideWhenOneSided
         actions = try values.decodeIfPresent([GestureSlot: GestureAction].self, forKey: .actions) ?? actions
     }
 
     func action(_ slot: GestureSlot) -> GestureAction { actions[slot] ?? GestureAction() }
+
+    enum Resolution: Equatable {
+        case run(GestureSlot)
+        /// Both sides have actions and the classifier could not tell which side was tapped.
+        case ambiguous(GestureSlot)
+        case unsupported
+    }
+
+    /// Minimum share of the Mac probability on one side before a two-sided gesture runs.
+    static let minSideConfidence = 0.6
+
+    /// Picks the slot for a recognized gesture, accounting for unreliable left/right.
+    func resolve(location: TapLocation, count: Int, sideConfidence: Double) -> Resolution {
+        guard let detected = GestureSlot(rawValue: "\(location.rawValue)×\(count)") else { return .unsupported }
+        let opposite = detected.opposite
+        let mine = action(detected).kind != .none
+        let theirs = action(opposite).kind != .none
+        switch (mine, theirs) {
+        case (true, true):
+            return sideConfidence >= Self.minSideConfidence ? .run(detected) : .ambiguous(detected)
+        case (false, true) where eitherSideWhenOneSided:
+            return .run(opposite)
+        default:
+            return .run(detected)
+        }
+    }
+}
+
+extension GestureSlot {
+    var opposite: GestureSlot {
+        switch self {
+        case .leftDouble: .rightDouble
+        case .leftTriple: .rightTriple
+        case .rightDouble: .leftDouble
+        case .rightTriple: .leftTriple
+        }
+    }
 }
 
 @MainActor
@@ -55,6 +97,7 @@ final class AppModel: ObservableObject {
     }
 
     private var engine: TapEngine?
+    nonisolated private static let log = Logger(subsystem: "app.taptap.TapTap", category: "gesture")
     private static let defaultsKey = "config"
 
     init() {
@@ -107,6 +150,13 @@ final class AppModel: ObservableObject {
             let e = TapEngine(classifier: try TapClassifier.load(path))
             e.minPeak = config.minPeak
             e.onGesture = { [weak self] g in self?.handle(g) }
+            // Per-tap verdicts for diagnosing missed gestures:
+            //   log stream --level info --predicate 'subsystem == "app.taptap.TapTap"'
+            let classes = e.classifier.classes
+            e.onTrace = { t, p, verdict in
+                let probs = p.map { zip(classes, $0).map { "\($0)=\(Int($1 * 100))" }.joined(separator: " ") } ?? ""
+                Self.log.info("\(String(format: "%.3f", t), privacy: .public) \(verdict, privacy: .public) \(probs, privacy: .public)")
+            }
             engine = e
         } catch {
             status = .noModel(error.localizedDescription)
@@ -134,11 +184,26 @@ final class AppModel: ObservableObject {
     }
 
     private func handle(_ g: Gesture) {
-        guard config.enabled, let slot = GestureSlot(rawValue: "\(g.location.rawValue)×\(g.count)") else { return }
+        guard config.enabled else { return }
+        let slot: GestureSlot
+        switch config.resolve(location: g.location, count: g.count, sideConfidence: g.sideConfidence) {
+        case .unsupported:
+            return
+        case .ambiguous(let detected):
+            Self.log.info("gesture \(detected.rawValue, privacy: .public) side \(Int(g.sideConfidence * 100))% → ambiguous, not run")
+            if config.showHUD {
+                HUD.show(slot: detected, action: config.action(detected), ran: false,
+                         error: L10n.text("Couldn't tell left from right. Try again."))
+            }
+            return
+        case .run(let s):
+            slot = s
+        }
         let action = config.action(slot)
         let canRun = action.kind != .none && (!action.needsAccessibility || Accessibility.isTrusted)
         let error = canRun ? ActionRunner.run(action) : nil
         let ran = canRun && error == nil
+        Self.log.info("gesture \(g.location.rawValue, privacy: .public)×\(g.count) mac \(Int(g.confidence * 100))% side \(Int(g.sideConfidence * 100))% → \(slot.rawValue, privacy: .public) \(action.kind.rawValue, privacy: .public) ran=\(ran) \(error ?? "", privacy: .public)")
         lastEvent = (slot, Date(), ran)
         if config.showHUD { HUD.show(slot: slot, action: action, ran: ran, error: error) }
     }

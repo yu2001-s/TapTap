@@ -10,7 +10,12 @@ public struct Gesture {
     public let location: TapLocation
     public let count: Int               // 2 or 3
     public let t: Double                // onset of the first tap
-    public let confidence: Double       // mean probability of the chosen class
+    /// Mac gestures: P(mac_left) + P(mac_right), averaged over the group. Desk: P(desk).
+    public let confidence: Double
+    /// Mac gestures: share of the Mac probability on the chosen side (0.5 = coin flip).
+    /// Telling left from right is much less reliable than telling "tapped the Mac" from
+    /// everything else, so callers decide how much side certainty they need.
+    public let sideConfidence: Double
 }
 
 /// Groups classified taps into double/triple gestures.
@@ -24,6 +29,10 @@ public final class GestureRecognizer {
     public var keyQuiet = 0.45          // MacTap uses 0.45 s after a key press
     public var clickQuiet = 0.30
     public var minConfidence = 0.45
+    /// Minimum P(mac_left) + P(mac_right) for a Mac gesture.
+    public var minMacConfidence = 0.6
+    /// Score triples by their two most Mac-like taps.
+    public var trimTriples = true
     /// Deliberate taps in one gesture are similar in strength; a crash plus its rattle is not.
     public var maxPeakRatio = 8.0
     /// Locations that produce gestures. The classifier still knows "desk" so desk knocks are
@@ -90,7 +99,7 @@ public final class GestureRecognizer {
 
         let p = classifier.probabilities(tap.features)
         group.append((tap.t, p, peak))
-        onTrace?(tap.t, p, "tap #\(group.count)")
+        onTrace?(tap.t, p, String(format: "tap #%d %.0f mg", group.count, peak))
         if group.count == 3 { flush() }
     }
 
@@ -117,17 +126,37 @@ public final class GestureRecognizer {
             onTrace?(group.last!.t, nil, "group of \(group.count) rejected (uneven strength)")
             return
         }
+        let iL = classifier.classes.firstIndex(of: TapLocation.macLeft.rawValue)
+        let iR = classifier.classes.firstIndex(of: TapLocation.macRight.rawValue)
+        func macProb(_ p: [Double]) -> Double { (iL.map { p[$0] } ?? 0) + (iR.map { p[$0] } ?? 0) }
+        // The first tap of a triple lands on a still chassis, the others in the previous tap's
+        // ringing, and it is often the odd one out (looks like a desk knock). Score a triple
+        // by its two most Mac-like taps; doubles have no tap to spare.
+        var voters = group.map(\.p)
+        if trimTriples, voters.count == 3, let worst = voters.indices.min(by: { macProb(voters[$0]) < macProb(voters[$1]) }) {
+            voters.remove(at: worst)
+        }
         var mean = [Double](repeating: 0, count: classifier.classes.count)
-        for g in group { for c in 0..<mean.count { mean[c] += g.p[c] / Double(group.count) } }
+        for v in voters { for c in 0..<mean.count { mean[c] += v[c] / Double(voters.count) } }
+        func p(_ l: TapLocation) -> Double { classifier.classes.firstIndex(of: l.rawValue).map { mean[$0] } ?? 0 }
+        let left = p(.macLeft), right = p(.macRight), mac = left + right
+        let last = group.last!.t
+
+        if mac >= minMacConfidence, enabledLocations.contains(.macLeft) || enabledLocations.contains(.macRight) {
+            let loc: TapLocation = left >= right ? .macLeft : .macRight
+            onGesture?(Gesture(location: loc, count: group.count, t: group[0].t,
+                               confidence: mac, sideConfidence: max(left, right) / mac))
+            return
+        }
         let best = mean.indices.max { mean[$0] < mean[$1] }!
-        guard let loc = TapLocation(rawValue: classifier.classes[best]), mean[best] >= minConfidence else {
-            onTrace?(group.last!.t, mean, "group of \(group.count) rejected (\(classifier.classes[best]) \(Int(mean[best] * 100))%)")
+        if classifier.classes[best] == TapLocation.desk.rawValue, mean[best] >= minConfidence {
+            guard enabledLocations.contains(.desk) else {
+                onTrace?(last, mean, "group of \(group.count) ignored (desk disabled)")
+                return
+            }
+            onGesture?(Gesture(location: .desk, count: group.count, t: group[0].t, confidence: mean[best], sideConfidence: 1))
             return
         }
-        guard enabledLocations.contains(loc) else {
-            onTrace?(group.last!.t, mean, "group of \(group.count) ignored (\(loc.rawValue) disabled)")
-            return
-        }
-        onGesture?(Gesture(location: loc, count: group.count, t: group[0].t, confidence: mean[best]))
+        onTrace?(last, mean, "group of \(group.count) rejected (mac \(Int(mac * 100))%, \(classifier.classes[best]) \(Int(mean[best] * 100))%)")
     }
 }
