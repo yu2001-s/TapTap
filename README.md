@@ -11,7 +11,7 @@ Turn taps on your MacBook's palm rest into useful actions. TapTap is a native ma
 ## Features
 
 - Four gestures: left/right double tap and left/right triple tap.
-- Assign media keys, keyboard shortcuts, apps, Apple Shortcuts, or shell commands.
+- Assign media keys, keyboard shortcuts, Discord mute/unmute, apps, Apple Shortcuts, or shell commands.
 - Record a key combination or edit it manually: single keys, Command, Option, Control, Shift, Fn, F1–F20, navigation keys, and the numeric keypad.
 - Send a shortcut to the current app or directly to a selected app in the background. A Test button sends it after a three-second countdown.
 - Adjust the minimum tap strength from 4 to 20 mg; typing, movement, and desk taps are filtered to reduce accidental triggers.
@@ -57,7 +57,7 @@ Ad-hoc builds can require granting Accessibility access again after rebuilding. 
 ## First use
 
 1. Open settings from the menu bar icon.
-2. For media keys or keyboard shortcuts, click **Grant Access…**, then enable TapTap in **System Settings → Privacy & Security → Accessibility**.
+2. For media keys, keyboard shortcuts, or Discord mute control, click **Grant Access…**, then enable TapTap in **System Settings → Privacy & Security → Accessibility**.
 3. Assign actions and gently double- or triple-tap a palm rest. Lower the threshold if taps are missed; raise it if resting your hands causes accidental triggers.
 
 Opening apps, running Apple Shortcuts, and shell commands do not require Accessibility access. Choose shell commands deliberately: they run as your logged-in user via `zsh -lc`.
@@ -66,7 +66,9 @@ When the menu bar icon is hidden, open TapTap from Applications to return to set
 
 ### Discord mute example
 
-Choose **Keyboard Shortcut → Edit…**, set **⇧⌘M**, and set **Send To → Discord** while Discord is running. This sends Discord's [built-in mute/unmute shortcut](https://support.discord.com/hc/en-us/articles/225878307--macOS-Discord-Hotkeys) directly to its process without bringing its window forward. Some apps' custom global keybind listeners do not respond to simulated global input; app-directed shortcuts offer another route. Use **Test** to check the result before relying on a gesture. Support for background delivery depends on the receiving app.
+Choose **Discord Mute / Unmute** for a gesture, then click **Test**. This presses Discord's accessible microphone switch and confirms its mute state changed, without bringing Discord forward. Discord must be running with its main window available; English and Chinese Discord interfaces are supported. Accessibility permission is required.
+
+Discord's [built-in ⇧⌘M shortcut](https://support.discord.com/hc/en-us/articles/225878307--macOS-Discord-Hotkeys) works in the foreground, but Discord can ignore simulated shortcuts sent to its background process. Use the dedicated action for background mute control. Generic app-directed keyboard shortcuts remain available for other uses; support depends on the receiving app.
 
 ## Privacy and storage
 

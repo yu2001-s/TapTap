@@ -65,7 +65,7 @@ struct SettingsView: View {
                         Button(L10n.text("Grant Access…")) { model.requestAccessibility() }
                     }
                 }
-                Text(L10n.text("Media keys and keyboard shortcuts require Accessibility access. Opening apps, running Shortcuts, and shell commands do not."))
+                Text(L10n.text("Media keys, keyboard shortcuts, and Discord control require Accessibility access. Opening apps, running Shortcuts, and shell commands do not."))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -119,6 +119,8 @@ private struct ActionRow: View {
             .fixedSize()
         case .keyboard:
             ShortcutEditor(action: $action)
+        case .discordMute:
+            DiscordMuteTest()
         case .openApp:
             Button(action.appPath.isEmpty ? L10n.text("Choose App…") : action.summary) { pickApp() }
         case .shortcut:

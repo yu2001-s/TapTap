@@ -55,13 +55,14 @@ enum MediaKey: String, CaseIterable, Codable {
 
 struct GestureAction: Codable, Equatable {
     enum Kind: String, CaseIterable, Codable {
-        case none, media, keyboard, openApp, shortcut, shell
+        case none, media, keyboard, discordMute, openApp, shortcut, shell
 
         var title: String {
             switch self {
             case .none: L10n.text("None")
             case .media: L10n.text("Media Key")
             case .keyboard: L10n.text("Keyboard Shortcut")
+            case .discordMute: L10n.text("Discord Mute / Unmute")
             case .openApp: L10n.text("Open App")
             case .shortcut: L10n.text("Run Shortcut")
             case .shell: L10n.text("Shell Command")
@@ -79,7 +80,7 @@ struct GestureAction: Codable, Equatable {
     var shortcutName: String = ""
     var command: String = ""
 
-    var needsAccessibility: Bool { kind == .media || kind == .keyboard }
+    var needsAccessibility: Bool { kind == .media || kind == .keyboard || kind == .discordMute }
 
     var summary: String {
         switch kind {
@@ -89,6 +90,7 @@ struct GestureAction: Codable, Equatable {
             if let keyCode { Self.shortcutString(keyLabel: ShortcutKey.label(keyCode), modifiers: modifiers)
                 + (keyboardAppPath.map { " → " + Self.appName($0) } ?? "") }
             else { L10n.text("Shortcut Not Set") }
+        case .discordMute: L10n.text("Discord Mute / Unmute")
         case .openApp: appPath.isEmpty ? L10n.text("No App Selected") : L10n.format("Open %@", Self.appName(appPath))
         case .shortcut: shortcutName.isEmpty ? L10n.text("No Shortcut Selected") : L10n.format("Run Shortcut “%@”", shortcutName)
         case .shell: command.isEmpty ? L10n.text("Command Not Set") : command
@@ -127,7 +129,12 @@ enum ActionRunner {
                 }) else { return L10n.format("Open %@ first", GestureAction.appName(path)) }
                 targetPID = target.processIdentifier
             }
+            guard Accessibility.isTrusted, CGPreflightPostEventAccess() else {
+                return L10n.text("Accessibility Permission Required")
+            }
             ShortcutPlayback.send(keyCode: code, modifiers: a.modifiers, targetPID: targetPID)
+        case .discordMute:
+            return DiscordMute.toggle()
         case .openApp:
             guard !a.appPath.isEmpty else { return nil }
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: a.appPath), configuration: .init())

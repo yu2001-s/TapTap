@@ -54,7 +54,7 @@
 "Accessibility" = "Accessibility";
 "Granted" = "Granted";
 "Grant Access…" = "Grant Access…";
-"Media keys and keyboard shortcuts require Accessibility access. Opening apps, running Shortcuts, and shell commands do not." = "Media keys and keyboard shortcuts require Accessibility access. Opening apps, running Shortcuts, and shell commands do not.";
+"Media keys, keyboard shortcuts, and Discord control require Accessibility access. Opening apps, running Shortcuts, and shell commands do not." = "Media keys, keyboard shortcuts, and Discord control require Accessibility access. Opening apps, running Shortcuts, and shell commands do not.";
 "Choose App…" = "Choose App…";
 "Shortcut Name" = "Shortcut Name";
 "Select a Shortcut" = "Select a Shortcut";
@@ -118,3 +118,11 @@
 "Keypad =" = "Keypad =";
 "Keypad Enter" = "Keypad Enter";
 "Keypad , (JIS)" = "Keypad , (JIS)";
+
+/* Discord microphone control */
+"Discord Mute / Unmute" = "Discord Mute / Unmute";
+"Discord's microphone is unavailable. Open its main window or restart Discord. Supported languages: English and Chinese." = "Discord's microphone is unavailable. Open its main window or restart Discord. Supported languages: English and Chinese.";
+"Could not read Discord's mute state. Try again." = "Could not read Discord's mute state. Try again.";
+"Could not control Discord's microphone. Try again." = "Could not control Discord's microphone. Try again.";
+"Discord did not confirm a mute change. Check its microphone button." = "Discord did not confirm a mute change. Check its microphone button.";
+"Toggles Discord's microphone without changing focus. Requires Accessibility access." = "Toggles Discord's microphone without changing focus. Requires Accessibility access.";

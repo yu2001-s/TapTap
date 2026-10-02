@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import OSLog
 
 /// A complete keystroke, including the modifier transitions observed by global
 /// hotkey listeners. A flag on the main key alone does not press Control/Command.
@@ -37,6 +38,7 @@ enum ShortcutPlayback {
         .init(code: 63, flag: .maskSecondaryFn, deviceFlag: []),
     ]
     private static let queue = DispatchQueue(label: "app.taptap.shortcut-playback")
+    private static let logger = Logger(subsystem: "app.taptap.TapTap", category: "ShortcutPlayback")
 
     static func steps(keyCode: CGKeyCode, modifiers: UInt, heldFlags: CGEventFlags = []) -> [Step] {
         let requested = RecordedShortcut.eventFlags(keyCode: keyCode, modifiers: modifiers)
@@ -60,7 +62,14 @@ enum ShortcutPlayback {
 
     static func send(keyCode: CGKeyCode, modifiers: UInt, targetPID: pid_t? = nil) {
         queue.async {
-            guard Accessibility.isTrusted, let source = CGEventSource(stateID: .hidSystemState) else { return }
+            let trusted = Accessibility.isTrusted
+            let canPost = CGPreflightPostEventAccess()
+            logger.info("Shortcut key=\(keyCode, privacy: .public) modifiers=\(modifiers, privacy: .public) targetPID=\(targetPID ?? 0, privacy: .public) accessibility=\(trusted, privacy: .public) postAccess=\(canPost, privacy: .public)")
+            guard trusted, canPost else { logger.error("Shortcut blocked by macOS event permissions"); return }
+            guard let source = CGEventSource(stateID: .hidSystemState) else {
+                logger.error("Could not allocate keyboard event source")
+                return
+            }
             let keyboardFlags: CGEventFlags = [.maskControl, .maskCommand, .maskAlternate, .maskShift,
                                                .maskSecondaryFn, .maskAlphaShift]
             // App-directed events do not share the physical keyboard's held
@@ -71,13 +80,17 @@ enum ShortcutPlayback {
             // Construct every event before posting any, so a failed allocation
             // cannot leave a modifier down without its matching release.
             let events = sequence.compactMap { $0.event(source: source) }
-            guard events.count == sequence.count else { return }
+            guard events.count == sequence.count else {
+                logger.error("Could not allocate complete shortcut sequence")
+                return
+            }
             for (event, step) in zip(events, sequence) {
                 event.timestamp = DispatchTime.now().uptimeNanoseconds
                 if let targetPID { event.postToPid(targetPID) }
                 else { event.post(tap: .cghidEventTap) }
                 Thread.sleep(forTimeInterval: step.delayAfter)
             }
+            logger.info("Posted \(events.count, privacy: .public) shortcut events to PID \(targetPID ?? 0, privacy: .public)")
         }
     }
 }

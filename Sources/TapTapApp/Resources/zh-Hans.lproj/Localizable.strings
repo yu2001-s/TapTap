@@ -54,7 +54,7 @@
 "Accessibility" = "辅助功能";
 "Granted" = "已授权";
 "Grant Access…" = "授权…";
-"Media keys and keyboard shortcuts require Accessibility access. Opening apps, running Shortcuts, and shell commands do not." = "媒体键和键盘快捷键需要辅助功能权限；打开 App、快捷指令和 Shell 命令不需要。";
+"Media keys, keyboard shortcuts, and Discord control require Accessibility access. Opening apps, running Shortcuts, and shell commands do not." = "媒体键、键盘快捷键和 Discord 控制需要辅助功能权限；打开 App、快捷指令和 Shell 命令不需要。";
 "Choose App…" = "选择 App…";
 "Shortcut Name" = "快捷指令名称";
 "Select a Shortcut" = "请选择";
@@ -118,3 +118,11 @@
 "Keypad =" = "小键盘 =";
 "Keypad Enter" = "小键盘 Enter";
 "Keypad , (JIS)" = "小键盘 , (JIS)";
+
+/* Discord microphone control */
+"Discord Mute / Unmute" = "Discord 静音 / 取消静音";
+"Discord's microphone is unavailable. Open its main window or restart Discord. Supported languages: English and Chinese." = "无法访问 Discord 麦克风，请打开主窗口或重启 Discord。支持英文和中文界面。";
+"Could not read Discord's mute state. Try again." = "无法读取 Discord 静音状态，请重试。";
+"Could not control Discord's microphone. Try again." = "无法控制 Discord 麦克风，请重试。";
+"Discord did not confirm a mute change. Check its microphone button." = "Discord 未确认静音状态变化，请检查麦克风按钮。";
+"Toggles Discord's microphone without changing focus. Requires Accessibility access." = "不切换当前 App，直接切换 Discord 麦克风静音。需要辅助功能权限。";
