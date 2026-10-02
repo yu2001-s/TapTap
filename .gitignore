@@ -1,0 +1,17 @@
+.build/
+.swiftpm/
+experiments/record
+experiments/collect
+experiments/
+recordings/
+__pycache__/
+build/
+.signing-identity
+.DS_Store
+.env
+.env.*
+*.p12
+*.pfx
+*.mobileprovision
+
+.venv/
