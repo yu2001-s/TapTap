@@ -5,7 +5,7 @@ import Testing
 @Test func allLanguagesHaveTheSameStringsAndFormatArguments() throws {
     var translations: [[String: String]] = []
     for language in [AppLanguage.english, .simplifiedChinese, .traditionalChinese] {
-        let directory = try #require(L10n.resources.url(forResource: language.rawValue, withExtension: "lproj"))
+        let directory = try #require(L10n.localizationBundle(for: language.rawValue, in: L10n.resources)?.bundleURL)
         let data = try Data(contentsOf: directory.appendingPathComponent("Localizable.strings"))
         let values = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
         translations.append(values)
@@ -24,6 +24,22 @@ import Testing
             #expect(arguments(value) == arguments(key))
         }
     }
+}
+
+@Test func lowercaseSwiftPMResourcesSupportChineseScriptIdentifiers() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("bundle")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let locale = root.appendingPathComponent("zh-hans.lproj")
+    try FileManager.default.createDirectory(at: locale, withIntermediateDirectories: true)
+    let plist = ["CFBundleIdentifier": "app.taptap.localization-test", "CFBundleDevelopmentRegion": "en"]
+    try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        .write(to: root.appendingPathComponent("Info.plist"))
+    try "\"Settings…\" = \"设置…\";".write(to: locale.appendingPathComponent("Localizable.strings"),
+                                        atomically: true, encoding: .utf8)
+    let resources = try #require(Bundle(url: root))
+    let selected = try #require(L10n.localizationBundle(for: "zh-Hans", in: resources))
+    #expect(selected.localizedString(forKey: "Settings…", value: nil, table: nil) == "设置…")
 }
 
 @Test func theSelectedLanguageUsesItsOwnResourceBundle() {

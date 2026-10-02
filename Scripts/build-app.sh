@@ -4,7 +4,7 @@
 #
 # Signing identity: $SIGN_IDENTITY, else the locally pinned certificate, else the
 # first "Apple Development" certificate. SIGN_IDENTITY=- explicitly opts in to
-# an ad-hoc build for contributors/CI. Never silently fall back to ad-hoc:
+# an ad-hoc build for contributors. Never silently fall back to ad-hoc:
 # keeping the signing identity and bundle ID preserves the app's designated
 # requirement across ordinary rebuilds.
 set -euo pipefail

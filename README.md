@@ -4,7 +4,7 @@
 
 Turn taps on your MacBook's palm rest into useful actions. TapTap is a native macOS menu bar app that recognizes double and triple taps on the left and right sides of the laptop.
 
-[![CI](https://github.com/yu2001-s/TapTap/actions/workflows/ci.yml/badge.svg)](https://github.com/yu2001-s/TapTap/actions/workflows/ci.yml) · [简体中文](README.zh-CN.md) · [MIT License](LICENSE)
+[简体中文](README.zh-CN.md) · [MIT License](LICENSE)
 
 <img src="docs/screenshots/settings-en.png" width="660" alt="TapTap settings in English">
 
@@ -90,7 +90,7 @@ swift run taptap live --verbose
 - `Resources/AppIcon.icon/`: editable Icon Composer icon with SVG layers.
 - `Tests/`: settings compatibility, shortcut playback, launch behavior, and localization checks.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [model training](docs/TRAINING.md). CI builds and tests on macOS and packages an **ad-hoc, unnotarized** app for development testing. CI artifacts are not signed public releases.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [model training](docs/TRAINING.md).
 
 ## License
 

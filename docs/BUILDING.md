@@ -38,4 +38,4 @@ The preview does not start the live sensor or overwrite saved mappings. It rende
 
 An Apple Development signature is for development and local use; it is not a notarized Developer ID distribution signature. A public binary release should use a Developer ID Application certificate, a secure signing setup, Apple notarization, and stapling. Do not publish certificates, private keys, or local notarization credentials.
 
-This repository's CI deliberately uses ad-hoc signing and labels its app archive as a development artifact. The source release does not promise a signed installer or notarized download.
+The source release does not include a notarized installer or download.

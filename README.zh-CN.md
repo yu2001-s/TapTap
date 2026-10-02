@@ -56,4 +56,4 @@ Discord 静音可以设置为 **⇧⌘M → 发送到 Discord**。请先启动 D
 
 查看 [构建说明](docs/BUILDING.md)、[贡献指南](CONTRIBUTING.md) 和 [模型训练](docs/TRAINING.md)。
 
-公开源码不包含原始录制、个人签名配置、证书和构建产物。CI 产物采用临时签名，未经公证，供开发测试使用。正式分发需要自己的 Developer ID 证书及 Apple 公证。
+公开源码不包含原始录制、个人签名配置、证书和构建产物。正式分发需要自己的 Developer ID 证书及 Apple 公证。

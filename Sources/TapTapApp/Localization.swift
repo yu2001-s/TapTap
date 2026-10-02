@@ -31,8 +31,19 @@ enum L10n {
     static func text(_ key: String, language: AppLanguage? = nil) -> String {
         let selected = language ?? self.language
         let code = selected == .system ? (resources.preferredLocalizations.first ?? "en") : selected.rawValue
-        let bundle = resources.url(forResource: code, withExtension: "lproj").flatMap(Bundle.init(url:)) ?? resources
+        let bundle = localizationBundle(for: code, in: resources) ?? resources
         return bundle.localizedString(forKey: key, value: key, table: "Localizable")
+    }
+
+    static func localizationBundle(for language: String, in resources: Bundle) -> Bundle? {
+        guard let root = resources.resourceURL else { return nil }
+        // SwiftPM 6.2 lowercases language directories; newer Xcode preserves
+        // script casing and uses a macOS bundle layout. Resolve both forms.
+        for identifier in [language, language.lowercased()] {
+            let url = root.appendingPathComponent(identifier).appendingPathExtension("lproj")
+            if FileManager.default.fileExists(atPath: url.path) { return Bundle(url: url) }
+        }
+        return nil
     }
 
     static func format(_ key: String, _ arguments: CVarArg...) -> String {

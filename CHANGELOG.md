@@ -8,4 +8,4 @@
 - Hideable menu bar icon with settings recovery through Applications.
 - English, Simplified Chinese, and Traditional Chinese interface with live language switching.
 - Stable local signing, staged installation, localization packaging, and explicit ad-hoc builds.
-- Source release under MIT with build documentation and macOS CI.
+- Source release under MIT with build documentation.
